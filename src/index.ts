@@ -1079,3 +1079,184 @@ export function printStatic(node: Node, i: number = 0): string {
       return printStaticBrandCombinator(node, i)
   }
 }
+
+let closureDefinitionCacheAwaiting: undefined | string
+const closureDefinitionCache: { [propName: string]: string } = {}
+
+function printClosureCompilerExternTypeDeclaration(declaration: TypeDeclaration, i: number): string {
+  let s = '/**\n * @typedef {'
+  s += printClosureCompilerExtern(declaration.type, i)
+  s += '}\n */\nvar ' + declaration.name + ';'
+  return s
+}
+
+function printClosureCompilerExternInterfaceCombinator(c: InterfaceCombinator, i: number): string {
+  let s = ''
+  if (c.properties.length === 0) {
+    s += 'Object.<string, *>'
+  } else {
+    s += '{\n'
+    const properties = c.properties.map(p => printClosureCompilerExternProperty(p, i + 1)).join(',\n')
+    s += properties
+    if (i === 0) {
+      if (closureDefinitionCacheAwaiting === undefined) {
+        // throw new Error(`unexpected behavior: closureDefinitionCacheAwaiting shouldn't be empty`);
+      } else {
+        closureDefinitionCache[closureDefinitionCacheAwaiting] = properties
+        closureDefinitionCacheAwaiting = undefined
+      }
+    }
+
+    s += `\n * ${indent(i)}}`
+  }
+  return s
+}
+
+function printClosureCompilerExternProperty(p: Property, i: number): string {
+  let s = ` * ${indent(i)}${p.key}: `
+
+  if (p.type.kind !== 'UndefinedType' && p.isOptional === true) {
+    s += `(${printClosureCompilerExtern(p.type, i)}|undefined)`
+  } else {
+    s += printClosureCompilerExtern(p.type, i)
+  }
+
+  return s
+}
+
+function printClosureCompilerExternUnionCombinator(c: UnionCombinator, i: number): string {
+  return printClosureCompilerExternTypesCombinator(c.types, '|', i)
+}
+
+function printClosureCompilerExternTypesCombinator(types: Array<TypeReference>, separator: string, i: number): string {
+  return types
+    .map(t => `${separator}${printClosureCompilerExtern(t, i)}`)
+    .join('')
+    .slice(separator.length)
+}
+
+function printClosureCompilerExternLiteralCombinator(c: LiteralCombinator): string {
+  switch (typeof c.value) {
+    case 'string':
+      return 'string'
+    case 'number':
+      return 'number'
+    case 'boolean':
+      return 'boolean'
+    default:
+      throw new Error(`printClosureCompilerExternLiteralCombinator: unexpected type "${typeof c.value}"`)
+  }
+}
+
+function printClosureCompilerExternIntersectionCombinator(c: IntersectionCombinator, i: number): string {
+  let s = '{\n'
+  s += c.types
+    .map(type => {
+      if (type.kind === 'Identifier') {
+        if (type.name in closureDefinitionCache === false) {
+          throw new Error(`unexpected behavior: "${type.name}" should be in closureDefinitionCache`)
+        }
+        return closureDefinitionCache[type.name]
+      } else {
+        const x = printClosureCompilerExternTypesCombinator([type], '', i)
+          .split('\n')
+          .slice(1, -1)
+
+        if (x.length !== 1) {
+          throw new Error(`unexpected behavior: ${JSON.stringify(x, null, 2)} should have length = 2`)
+        }
+        return x[0]
+      }
+    })
+    .join(',\n')
+
+  s += '\n * }'
+
+  return s
+}
+
+function printClosureCompilerExternArrayCombinator(c: ArrayCombinator, i: number): string {
+  return `Array<${printClosureCompilerExtern(c.type, i)}>`
+}
+
+export function printClosureCompilerExtern(node: Node, i: number = 0): string {
+  if (i === 0) {
+    if (node.kind === 'TypeDeclaration') {
+      if (node.type.kind === 'InterfaceCombinator') {
+        closureDefinitionCacheAwaiting = node.name
+      }
+    }
+    //if (closureDefinitionCacheAwaiting !== undefined) {
+    // throw new Error('unexpected behaviour, closureDefinitionCacheAwaiting should be empty');
+    //} else {
+    //    closureDefinitionCacheAwaiting = node.name;
+    //}
+    //} else {
+    //    closureDefinitionCacheAwaiting = undefined;
+    //}
+  }
+  /*if ('name' in node) {
+        console.log('!!!!!!!!!' + node.name + '!!!!!!!!!!!!!!!!');
+        if (node.name === 'GenericAssetObject') {
+            debugger;
+        }
+    }*/
+  switch (node.kind) {
+    case 'Identifier':
+      return node.name
+    case 'StringType':
+    case 'NumberType':
+    case 'BooleanType':
+    case 'NullType':
+    case 'UndefinedType':
+    case 'FunctionType':
+      return node.name
+    case 'UnknownType':
+      throw new Error('not implemented')
+    case 'IntType':
+      return `t.${node.name}`
+    case 'IntegerType':
+      return 'number'
+    case 'AnyArrayType':
+      return 'Array<unknown>'
+    case 'AnyDictionaryType':
+      return 'Record<string, unknown>'
+    case 'LiteralCombinator':
+      return printClosureCompilerExternLiteralCombinator(node)
+    case 'InterfaceCombinator':
+      return printClosureCompilerExternInterfaceCombinator(node, i)
+    case 'PartialCombinator':
+      throw new Error('not implemented')
+    case 'UnionCombinator':
+      return printClosureCompilerExternUnionCombinator(node, i)
+    case 'TaggedUnionCombinator':
+      throw new Error('not implemented')
+    case 'IntersectionCombinator':
+      return printClosureCompilerExternIntersectionCombinator(node, i)
+    case 'KeyofCombinator':
+      throw new Error('not implemented')
+    case 'ArrayCombinator':
+      return printClosureCompilerExternArrayCombinator(node, i)
+    case 'ReadonlyArrayCombinator':
+      throw new Error('not implemented')
+    case 'TupleCombinator':
+      throw new Error('not implemented')
+    case 'RecursiveCombinator':
+      throw new Error('not implemented')
+    case 'DictionaryCombinator':
+      throw new Error('not implemented')
+    case 'TypeDeclaration':
+      return printClosureCompilerExternTypeDeclaration(node, i)
+    case 'CustomTypeDeclaration':
+    case 'CustomCombinator':
+      throw new Error('not implemented')
+    case 'ExactCombinator':
+      throw new Error('not implemented')
+    case 'StrictCombinator':
+      throw new Error('not implemented')
+    case 'ReadonlyCombinator':
+      throw new Error('not implemented')
+    case 'BrandCombinator':
+      throw new Error('not implemented')
+  }
+}
