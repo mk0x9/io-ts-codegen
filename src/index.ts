@@ -1083,20 +1083,28 @@ export function printStatic(node: Node, i: number = 0): string {
 let closureDefinitionCacheAwaiting: undefined | string
 const closureDefinitionCache: { [propName: string]: string } = {}
 
-function printClosureCompilerExternTypeDeclaration(declaration: TypeDeclaration, i: number): string {
+function printClosureCompilerExternTypeDeclaration(
+  context: Array<Node>,
+  declaration: TypeDeclaration,
+  i: number
+): string {
   let s = '/**\n * @typedef {'
-  s += printClosureCompilerExtern(declaration.type, i)
+  s += printClosureCompilerExtern(context, declaration.type, i)
   s += '}\n */\nvar ' + declaration.name + ';'
   return s
 }
 
-function printClosureCompilerExternInterfaceCombinator(c: InterfaceCombinator, i: number): string {
+function printClosureCompilerExternInterfaceCombinator(
+  context: Array<Node>,
+  c: InterfaceCombinator,
+  i: number
+): string {
   let s = ''
   if (c.properties.length === 0) {
     s += 'Object.<string, *>'
   } else {
-    s += '{\n'
-    const properties = c.properties.map(p => printClosureCompilerExternProperty(p, i + 1)).join(',\n')
+    // s += '{\n'
+    const properties = c.properties.map(p => printClosureCompilerExternProperty(context, p, i + 1)).join(',\n')
     s += properties
     if (i === 0) {
       if (closureDefinitionCacheAwaiting === undefined) {
@@ -1107,30 +1115,35 @@ function printClosureCompilerExternInterfaceCombinator(c: InterfaceCombinator, i
       }
     }
 
-    s += `\n * ${indent(i)}}`
+    // s += `\n * ${indent(i)}}`
   }
   return s
 }
 
-function printClosureCompilerExternProperty(p: Property, i: number): string {
+function printClosureCompilerExternProperty(context: Array<Node>, p: Property, i: number): string {
   let s = ` * ${indent(i)}${p.key}: `
 
   if (p.type.kind !== 'UndefinedType' && p.isOptional === true) {
-    s += `(${printClosureCompilerExtern(p.type, i)}|undefined)`
+    s += `(${printClosureCompilerExtern(context, p.type, i)}|undefined)`
   } else {
-    s += printClosureCompilerExtern(p.type, i)
+    s += printClosureCompilerExtern(context, p.type, i)
   }
 
   return s
 }
 
-function printClosureCompilerExternUnionCombinator(c: UnionCombinator, i: number): string {
-  return printClosureCompilerExternTypesCombinator(c.types, '|', i)
+function printClosureCompilerExternUnionCombinator(context: Array<Node>, c: UnionCombinator, i: number): string {
+  return printClosureCompilerExternTypesCombinator(context, c.types, '|', i)
 }
 
-function printClosureCompilerExternTypesCombinator(types: Array<TypeReference>, separator: string, i: number): string {
+function printClosureCompilerExternTypesCombinator(
+  context: Array<Node>,
+  types: Array<TypeReference>,
+  separator: string,
+  i: number
+): string {
   return types
-    .map(t => `${separator}${printClosureCompilerExtern(t, i)}`)
+    .map(t => `${separator}${printClosureCompilerExtern(context, t, i)}`)
     .join('')
     .slice(separator.length)
 }
@@ -1148,7 +1161,11 @@ function printClosureCompilerExternLiteralCombinator(c: LiteralCombinator): stri
   }
 }
 
-function printClosureCompilerExternIntersectionCombinator(c: IntersectionCombinator, i: number): string {
+function printClosureCompilerExternIntersectionCombinator(
+  context: Array<Node>,
+  c: IntersectionCombinator,
+  i: number
+): string {
   let s = '{\n'
   s += c.types
     .map(type => {
@@ -1158,12 +1175,10 @@ function printClosureCompilerExternIntersectionCombinator(c: IntersectionCombina
         }
         return closureDefinitionCache[type.name]
       } else {
-        const x = printClosureCompilerExternTypesCombinator([type], '', i)
-          .split('\n')
-          .slice(1, -1)
-
-        if (x.length !== 1) {
-          throw new Error(`unexpected behavior: ${JSON.stringify(x, null, 2)} should have length = 2`)
+        const x = printClosureCompilerExternTypesCombinator(context, [type], '', i).split('\n')
+        if (x.length !== 1 && !(x.length === 3 && x[0] === '{' && x[2] === ' * }')) {
+          // set default i as undefined in printClosureCompilerExtern and use it later;
+          throw new Error(`unexpected behavior: ${JSON.stringify(x, null, 2)} should have length = 1`)
         }
         return x[0]
       }
@@ -1175,11 +1190,11 @@ function printClosureCompilerExternIntersectionCombinator(c: IntersectionCombina
   return s
 }
 
-function printClosureCompilerExternArrayCombinator(c: ArrayCombinator, i: number): string {
-  return `Array<${printClosureCompilerExtern(c.type, i)}>`
+function printClosureCompilerExternArrayCombinator(context: Array<Node>, c: ArrayCombinator, i: number): string {
+  return `Array<${printClosureCompilerExtern(context, c.type, i)}>`
 }
 
-export function printClosureCompilerExtern(node: Node, i: number = 0): string {
+export function printClosureCompilerExtern(context: Array<Node>, node: Node, i: number = 0): string {
   if (i === 0) {
     if (node.kind === 'TypeDeclaration') {
       if (node.type.kind === 'InterfaceCombinator') {
@@ -1224,19 +1239,23 @@ export function printClosureCompilerExtern(node: Node, i: number = 0): string {
     case 'LiteralCombinator':
       return printClosureCompilerExternLiteralCombinator(node)
     case 'InterfaceCombinator':
-      return printClosureCompilerExternInterfaceCombinator(node, i)
+      return (
+        (i === 0 ? '{\n' : '') +
+        printClosureCompilerExternInterfaceCombinator(context, node, i) +
+        (i === 0 ? '\n * }' : '')
+      )
     case 'PartialCombinator':
       throw new Error('not implemented')
     case 'UnionCombinator':
-      return printClosureCompilerExternUnionCombinator(node, i)
+      return printClosureCompilerExternUnionCombinator(context, node, i)
     case 'TaggedUnionCombinator':
       throw new Error('not implemented')
     case 'IntersectionCombinator':
-      return printClosureCompilerExternIntersectionCombinator(node, i)
+      return printClosureCompilerExternIntersectionCombinator(context, node, i)
     case 'KeyofCombinator':
       throw new Error('not implemented')
     case 'ArrayCombinator':
-      return printClosureCompilerExternArrayCombinator(node, i)
+      return printClosureCompilerExternArrayCombinator(context, node, i)
     case 'ReadonlyArrayCombinator':
       throw new Error('not implemented')
     case 'TupleCombinator':
@@ -1246,7 +1265,7 @@ export function printClosureCompilerExtern(node: Node, i: number = 0): string {
     case 'DictionaryCombinator':
       throw new Error('not implemented')
     case 'TypeDeclaration':
-      return printClosureCompilerExternTypeDeclaration(node, i)
+      return printClosureCompilerExternTypeDeclaration(context, node, i)
     case 'CustomTypeDeclaration':
     case 'CustomCombinator':
       throw new Error('not implemented')
