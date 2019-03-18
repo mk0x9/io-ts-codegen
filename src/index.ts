@@ -1166,26 +1166,48 @@ function printClosureCompilerExternIntersectionCombinator(
   c: IntersectionCombinator,
   i: number
 ): string {
-  let s = '{\n'
+  let s = ''
+  // let s = '{\n'
   s += c.types
     .map(type => {
       if (type.kind === 'Identifier') {
-        if (type.name in closureDefinitionCache === false) {
-          throw new Error(`unexpected behavior: "${type.name}" should be in closureDefinitionCache`)
+        const res = context.filter(node => {
+          if ('name' in node) {
+            return node.name === type.name
+          }
+          return false
+        })
+        debugger
+        if (res.length !== 1) {
+          throw new Error('unexpected behavior')
+        } else {
+          const x = res[0]
+          if (x === undefined) {
+            throw new Error('unexpected behavior')
+          } else {
+            if ('type' in x === false) {
+              throw 1
+            } else if ('type' in x) {
+              if (x.type.kind !== 'InterfaceCombinator') {
+                throw 1
+              } else {
+                return printClosureCompilerExternInterfaceCombinator(context, x.type, i)
+              }
+            }
+          }
         }
-        return closureDefinitionCache[type.name]
       } else {
         const x = printClosureCompilerExternTypesCombinator(context, [type], '', i).split('\n')
         if (x.length !== 1 && !(x.length === 3 && x[0] === '{' && x[2] === ' * }')) {
           // set default i as undefined in printClosureCompilerExtern and use it later;
           throw new Error(`unexpected behavior: ${JSON.stringify(x, null, 2)} should have length = 1`)
         }
-        return x[0]
+        return x[1]
       }
     })
     .join(',\n')
 
-  s += '\n * }'
+  // s += '\n * }'
 
   return s
 }
@@ -1251,7 +1273,12 @@ export function printClosureCompilerExtern(context: Array<Node>, node: Node, i: 
     case 'TaggedUnionCombinator':
       throw new Error('not implemented')
     case 'IntersectionCombinator':
-      return printClosureCompilerExternIntersectionCombinator(context, node, i)
+      return (
+        (i === 0 ? '{\n' : '') +
+        printClosureCompilerExternIntersectionCombinator(context, node, i) +
+        (i === 0 ? '\n * }' : '')
+      )
+
     case 'KeyofCombinator':
       throw new Error('not implemented')
     case 'ArrayCombinator':
