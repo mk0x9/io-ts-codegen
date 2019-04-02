@@ -138,6 +138,7 @@ export interface TypeDeclaration extends Readonly {
     name: string;
     type: TypeReference;
     isExported: boolean;
+    description?: string;
 }
 export interface CustomTypeDeclaration {
     kind: 'CustomTypeDeclaration';
@@ -209,7 +210,7 @@ export declare function recordCombinator(domain: TypeReference, codomain: TypeRe
 export declare const dictionaryCombinator: typeof recordCombinator;
 export declare function typeDeclaration(name: string, type: TypeReference, isExported?: boolean, 
 /** @deprecated */
-isReadonly?: boolean): TypeDeclaration;
+isReadonly?: boolean, description?: string): TypeDeclaration;
 export declare function customTypeDeclaration(name: string, staticRepr: string, runtimeRepr: string, dependencies?: Array<string>): CustomTypeDeclaration;
 export declare function customCombinator(staticRepr: string, runtimeRepr: string, dependencies?: Array<string>): CustomCombinator;
 export declare function exactCombinator(type: TypeReference, name?: string): ExactCombinator;
